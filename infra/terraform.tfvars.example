@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+# Nothing here is a secret -- real credentials come from ~/.aws and ~/.databrickscfg.
+#
+# Alternatively, set these as TF_VAR_* in .env (see ../.env.example) and skip
+# terraform.tfvars entirely -- direnv/just will export them for Terraform.
+
+databricks_account_id      = "00000000-0000-0000-0000-000000000000" # your Databricks account UUID
+databricks_account_profile = "your-databricks-account-profile"      # account-level profile in ~/.databrickscfg
+region                     = "us-east-1"
+aws_profile                = "your-aws-sso-profile"                  # AWS named profile in ~/.aws
+prefix                     = "my-sandbox"
+my_email                   = "you@example.com"                       # workspace admin / metastore + catalog owner
+sandbox_user_email         = "service-user@example.com"             # sandbox service user (identity.tf)
