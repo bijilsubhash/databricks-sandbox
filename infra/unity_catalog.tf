@@ -39,6 +39,26 @@ resource "databricks_mws_permission_assignment" "me_admin" {
   permissions  = ["ADMIN"]
 }
 
+# Assign user_group (which contains the sandbox user) to the workspace as USER.
+resource "databricks_mws_permission_assignment" "user_group" {
+  provider     = databricks.mws
+  workspace_id = databricks_mws_workspaces.this.workspace_id
+  principal_id = databricks_group.user_group.id
+  permissions  = ["USER"]
+}
+
+# USER assignment alone doesn't grant entitlements. Give user_group the workspace
+# and SQL access entitlements so members can actually open the workspace/SQL UIs.
+# (Uses the workspace-level provider; entitlements resources require it.)
+resource "databricks_entitlements" "user_group" {
+  provider              = databricks.workspace
+  group_id              = databricks_group.user_group.id
+  workspace_access      = true
+  databricks_sql_access = true
+
+  depends_on = [databricks_mws_permission_assignment.user_group]
+}
+
 # ===========================================================================
 # 6. Catalog data bucket + storage credential + external location
 #    (catalog-level managed storage -- the recommended pattern)
@@ -130,5 +150,11 @@ resource "databricks_grants" "sandbox" {
   grant {
     principal  = var.my_email
     privileges = ["ALL_PRIVILEGES"]
+  }
+  # Read access for the sandbox user_group: browse the catalog/schemas and read
+  # tables (the "unprivileged reader" used to test ABAC masking/row filters).
+  grant {
+    principal  = databricks_group.user_group.display_name
+    privileges = ["USE_CATALOG", "USE_SCHEMA", "SELECT"]
   }
 }

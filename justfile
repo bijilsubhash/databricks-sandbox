@@ -1,29 +1,38 @@
 # justfile -- session bootstrap for the databricks-sandbox repo
 #
 # Auth is ambient (nothing secret lives here):
-#   AWS        -> SSO session `databricks` in ~/.aws/config (profile databricks-sandbox)
-#   Databricks -> account-level OAuth profile `sandbox-account` in ~/.databrickscfg
+#   AWS                  -> SSO session `databricks` in ~/.aws/config (profile databricks-sandbox)
+#   Databricks (account) -> account-level OAuth profile `sandbox-account` in ~/.databrickscfg
+#   Databricks (workspace) -> workspace OAuth profile (optional; needed for bundles,
+#                             jobs, SQL, and anything scoped to a single workspace)
 #
-# Both use short-lived tokens that expire between sessions. Run `just up` at the
-# start of a session to refresh whatever has lapsed and confirm you're good to
-# run terraform / the databricks CLI.
+# The workspace profile is the go-to default: DATABRICKS_CONFIG_PROFILE (the CLI's
+# default profile) points at it, so `databricks` / `databricks bundle` commands need
+# no --profile. Account-level APIs (users, workspaces, budgets) and Terraform use the
+# account profile, carried in DATABRICKS_ACCOUNT_PROFILE and passed via --profile.
+#
+# All tokens are short-lived and expire between sessions. Run `just up` at the start
+# of a session to refresh whatever has lapsed and confirm you're good to run
+# terraform / the databricks CLI.
 #
 # Quick start:  just up
 
 # Real values come from .env (gitignored). Copy .env.example -> .env first.
 set dotenv-load := true
 
-aws_profile        := env_var_or_default("AWS_PROFILE", "")
-db_account_profile := env_var_or_default("DATABRICKS_CONFIG_PROFILE", "")
-db_account_host    := env_var_or_default("DATABRICKS_ACCOUNT_HOST", "https://accounts.cloud.databricks.com")
-db_account_id      := env_var_or_default("DATABRICKS_ACCOUNT_ID", "")
+aws_profile          := env_var_or_default("AWS_PROFILE", "")
+db_account_profile   := env_var_or_default("DATABRICKS_ACCOUNT_PROFILE", "")
+db_account_host      := env_var_or_default("DATABRICKS_ACCOUNT_HOST", "https://accounts.cloud.databricks.com")
+db_account_id        := env_var_or_default("DATABRICKS_ACCOUNT_ID", "")
+db_workspace_profile := env_var_or_default("DATABRICKS_CONFIG_PROFILE", "")
+db_workspace_host    := env_var_or_default("DATABRICKS_WORKSPACE_HOST", "")
 
 # List available recipes.
 default:
     @just --list
 
 # One-shot session bootstrap: refresh AWS + Databricks auth only if needed, then report.
-up: _check-env aws-login db-login status
+up: _check-env aws-login db-login db-workspace-login status
 
 # Fail early with a helpful message if .env hasn't been set up.
 _check-env:
@@ -83,6 +92,36 @@ db-relogin:
         databricks auth login --profile {{db_account_profile}}
     fi
 
+# Refresh the Databricks workspace OAuth token if stale (the go-to profile, DATABRICKS_CONFIG_PROFILE).
+db-workspace-login:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    if [ -z "{{db_workspace_profile}}" ]; then
+        echo "· Databricks workspace: skipped (set DATABRICKS_CONFIG_PROFILE in .env to enable)"
+        exit 0
+    fi
+    if databricks current-user me --profile {{db_workspace_profile}} >/dev/null 2>&1; then
+        echo "✓ Databricks workspace: session already valid ({{db_workspace_profile}})"
+    else
+        echo "→ Databricks workspace: token expired, logging in (a browser will open)..."
+        just db-workspace-relogin
+    fi
+
+# Force a Databricks workspace re-login regardless of current token state.
+db-workspace-relogin:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    if [ -z "{{db_workspace_profile}}" ]; then
+        echo "✗ DATABRICKS_CONFIG_PROFILE is not set in .env"
+        exit 1
+    fi
+    # Reuse the host stored in ~/.databrickscfg when .env omits it.
+    if [ -n "{{db_workspace_host}}" ]; then
+        databricks auth login --host {{db_workspace_host}} --profile {{db_workspace_profile}}
+    else
+        databricks auth login --profile {{db_workspace_profile}}
+    fi
+
 # ---------------------------------------------------------------------------
 # Status
 # ---------------------------------------------------------------------------
@@ -99,3 +138,9 @@ status:
     databricks account users list --profile {{db_account_profile}} -o json 2>/dev/null \
         | python3 -c 'import sys,json; d=json.load(sys.stdin); print(f"✓ {len(d)} user(s) visible; auth OK")' \
         || echo "✗ Databricks not authenticated — run: just db-login"
+    if [ -n "{{db_workspace_profile}}" ]; then
+        echo "── Databricks (workspace: {{db_workspace_profile}}) ─"
+        databricks current-user me --profile {{db_workspace_profile}} -o json 2>/dev/null \
+            | python3 -c 'import sys,json; d=json.load(sys.stdin); print("✓ "+d.get("userName","?")+"; auth OK")' \
+            || echo "✗ Databricks workspace not authenticated — run: just db-workspace-login"
+    fi

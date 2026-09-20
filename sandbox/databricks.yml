@@ -16,26 +16,11 @@ variables:
 
 targets:
   dev:
-    # The default target uses 'mode: development' to create a development copy.
-    # - Deployed resources get prefixed with '[dev my_user_name]'
-    # - Any job schedules and triggers are paused by default.
-    # See also https://docs.databricks.com/dev-tools/bundles/deployment-modes.html.
     mode: development
     default: true
     workspace:
       host: https://dbc-b1dc4810-5d23.cloud.databricks.com
+      profile: sandbox-workspace
     variables:
       catalog: sandbox
-      schema: ${workspace.current_user.short_name}
-  prod:
-    mode: production
-    workspace:
-      host: https://dbc-b1dc4810-5d23.cloud.databricks.com
-      # We explicitly deploy to /Workspace/Users/bijil@nimblestax.com to make sure we only have a single copy.
-      root_path: /Workspace/Users/bijil@nimblestax.com/.bundle/${bundle.name}/${bundle.target}
-    variables:
-      catalog: sandbox
-      schema: prod
-    permissions:
-      - user_name: bijil@nimblestax.com
-        level: CAN_MANAGE
+      schema: dev_${workspace.current_user.short_name}

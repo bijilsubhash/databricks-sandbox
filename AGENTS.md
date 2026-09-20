@@ -23,3 +23,9 @@ If the CLI is not installed, see: https://docs.databricks.com/dev-tools/cli/inst
 ## Project Instructions
 
 <!-- Add your project-specific instructions, coding conventions, or notes here -->
+
+### Style
+
+- Keep comments and markdown/descriptions concise. Prefer a short line over a
+  paragraph; explain *why*, not *what the code already says*. Drop filler and
+  redundant restatement. This applies to notebooks, SQL, and Terraform alike.
